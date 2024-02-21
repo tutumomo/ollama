@@ -2,7 +2,7 @@
 git pull 
 
 call ac
-pip install -U ollama orjson gunicorn litellm litellm[proxy]
+pip install -U ollama orjson gunicorn litellm streamlit gradio litellm[proxy]
 
 https://github.com/tutumomo/ollama-libraries-example
 
