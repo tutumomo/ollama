@@ -2,12 +2,13 @@ import json
 import requests
 
 # NOTE: ollama must be running for this to work, start the ollama app or run `ollama serve`
+# 如果右下角有 Ollama 的圖示，cmd 就無法啟動 ollama serve，必須把 ollama 圖示關閉。
 model = "openhermes_assistant"  # TODO: update this for whatever model you wish to use
 
 
 def chat(messages):
     r = requests.post(
-        "http://0.0.0.0:11434/api/chat",
+        "http://127.0.0.1:11434/api/chat",
         json={"model": model, "messages": messages, "stream": True},
     )
     r.raise_for_status()
