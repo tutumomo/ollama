@@ -104,25 +104,14 @@ func rocmDynLibPresent() bool {
 }
 
 func nativeInit() error {
-	slog.Info("Extracting dynamic libraries...")
-	assetsDir, err := gpu.AssetsDir()
+	payloadsDir, err := gpu.PayloadsDir()
 	if err != nil {
 		return err
 	}
-	if runtime.GOOS == "darwin" {
-		err := extractPayloadFiles(assetsDir, "llama.cpp/ggml-metal.metal")
-		if err != nil {
-			if err == payloadMissing {
-				// TODO perhaps consider this a hard failure on arm macs?
-				slog.Info("ggml-meta.metal payload missing")
-				return nil
-			}
-			return err
-		}
-		os.Setenv("GGML_METAL_PATH_RESOURCES", assetsDir)
-	}
 
-	libs, err := extractDynamicLibs(assetsDir, "llama.cpp/build/*/*/*/lib/*")
+	slog.Info(fmt.Sprintf("Extracting dynamic libraries to %s ...", payloadsDir))
+
+	libs, err := extractDynamicLibs(payloadsDir, "llama.cpp/build/*/*/*/lib/*")
 	if err != nil {
 		if err == payloadMissing {
 			slog.Info(fmt.Sprintf("%s", payloadMissing))
@@ -153,7 +142,7 @@ func nativeInit() error {
 	return nil
 }
 
-func extractDynamicLibs(assetsDir, glob string) ([]string, error) {
+func extractDynamicLibs(payloadsDir, glob string) ([]string, error) {
 	files, err := fs.Glob(libEmbed, glob)
 	if err != nil || len(files) == 0 {
 		return nil, payloadMissing
@@ -172,14 +161,14 @@ func extractDynamicLibs(assetsDir, glob string) ([]string, error) {
 		g.Go(func() error {
 			// llama.cpp/build/$OS/$GOARCH/$VARIANT/lib/$LIBRARY
 			// Include the variant in the path to avoid conflicts between multiple server libs
-			targetDir := filepath.Join(assetsDir, pathComps[pathComponentCount-3])
+			targetDir := filepath.Join(payloadsDir, pathComps[pathComponentCount-3])
 			srcFile, err := libEmbed.Open(file)
 			if err != nil {
 				return fmt.Errorf("read payload %s: %v", file, err)
 			}
 			defer srcFile.Close()
 			if err := os.MkdirAll(targetDir, 0o755); err != nil {
-				return fmt.Errorf("create payload lib dir %s: %v", assetsDir, err)
+				return fmt.Errorf("create payload lib dir %s: %v", payloadsDir, err)
 			}
 			src := io.Reader(srcFile)
 			filename := file
@@ -208,52 +197,6 @@ func extractDynamicLibs(assetsDir, glob string) ([]string, error) {
 		})
 	}
 	return libs, g.Wait()
-}
-
-func extractPayloadFiles(assetsDir, glob string) error {
-	files, err := fs.Glob(libEmbed, glob)
-	if err != nil || len(files) == 0 {
-		return payloadMissing
-	}
-
-	for _, file := range files {
-		srcFile, err := libEmbed.Open(file)
-		if err != nil {
-			return fmt.Errorf("read payload %s: %v", file, err)
-		}
-		defer srcFile.Close()
-		if err := os.MkdirAll(assetsDir, 0o755); err != nil {
-			return fmt.Errorf("create payload lib dir %s: %v", assetsDir, err)
-		}
-		src := io.Reader(srcFile)
-		filename := file
-		if strings.HasSuffix(file, ".gz") {
-			src, err = gzip.NewReader(src)
-			if err != nil {
-				return fmt.Errorf("decompress payload %s: %v", file, err)
-			}
-			filename = strings.TrimSuffix(filename, ".gz")
-		}
-
-		destFile := filepath.Join(assetsDir, filepath.Base(filename))
-		_, err = os.Stat(destFile)
-		switch {
-		case errors.Is(err, os.ErrNotExist):
-			destFp, err := os.OpenFile(destFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-			if err != nil {
-				return fmt.Errorf("write payload %s: %v", file, err)
-			}
-			defer destFp.Close()
-			if _, err := io.Copy(destFp, src); err != nil {
-				return fmt.Errorf("copy payload %s: %v", file, err)
-			}
-		case err != nil:
-			return fmt.Errorf("stat payload %s: %v", file, err)
-		case err == nil:
-			slog.Debug("payload already exists: " + destFile)
-		}
-	}
-	return nil
 }
 
 func verifyDriverAccess() error {
